@@ -1,0 +1,462 @@
+---
+title: "HW03: Analýza sieťového záznamu"
+layout: "homework"
+list-of-files: ["capture.h", "capture.c", "nft.c"]
+solution-path: /home/kontr/pb071/hw03/nft
+publish: now
+deadline-early: 2022-04-10 24:00
+deadline-final: 2022-04-13 24:00
+authors:
+  - xbaso
+  - xbobon
+  - xsedla10
+  - xnagy1
+---
+
+== Predstavenie úlohy
+
+V tejto domácej úlohe si vyskúšate naimplementovať malú aplikáciu s názvom
+nft – network filtering tool.
+Tento program dokáže načítať záznam sieťovej komunikácie uložený v súbore pcap
+a vypísať o ňom rôzne štatistiky.
+
+Pcap je široko používané rozhranie pre prácu so záznamami sieťovej komunikácie.
+Takýto záznam si na svojom počítači môžete vytvoriť napríklad pomocou programu
+Wireshark, ktorý vám ho dovolí uložiť do súboru pcap.
+Pre vyriešenie domácej úlohy však nemusíte formátu pcap súborov úplne rozumieť,
+všetky dôležité informácie nájdete v zadaní.
+Knižnicu pre načítavanie dát v tomto formáte vám dodávame v kostre, vašou úlohou
+bude ju správne použiť.
+
+=== Ako túto domácu úlohu riešiť?
+
+. Prečítajte si informácie o dodanej knižnici a pozrite sa do súboru `demo.c`.
+  Skúste pomocou funkcie `demo1` vypísať informácie z nejakého súboru pcap
+  (jeden máte prichystaný v kostre).
+  Pochopte, čo funkcia robí. Až potom sa pustite do programovania.
+
+. Implementujte prvú časť zadania. Skúste použiť riešenie tejto časti vo funkcii
+  `demo2` v súbore `demo.c`.
+
+. Implementujte druhú časť zadania a skúste použiť rôzne filtre v `demo.c`.
+  To isté spravte aj pre tretiu časť.
+
+. Implementujte štvrtú časť zadania a otestujte jej funkčnosť ako použitím
+  výsledného programu, tak pomocou testov.
+
+=== Knižnica pre prácu so súbormi v pcap formáte
+
+K riešeniu úlohy použijete jednoduchú knižnicu pre prácu so súbormi pcap, ktorú
+nájdete v kostre úlohy – konkrétne v súboroch `pcap.h` a `pcap.c`.
+Na to, aby ste vyriešili túto úlohu, nemusíte súbor `pcap.c` vôbec otvárať,
+ani nemusíte rozumieť jeho obsahu.
+
+Prácu s knižnicou začnete volaním funkcie `init_context`, ktorej predáte cestu
+k súboru a štruktúru `pcap_context`, ktorú daná funkcia naplní.
+
+```c
+int init_context(struct pcap_context *context, const char *filename);
+```
+
+Naplnenú štruktúru `pcap_context` si treba držať, až kým práca so súborom
+neskončí, pretože ju budú potrebovať funkcie na načítavanie dát zo zadaného
+súboru.
+Pre každý súbor pcap, ktorý chcete otvoriť, si stačí vytvoriť a nainicializovať
+novú štruktúru `pcap_context`, takže môžete mať otvorených niekoľko súborov pcap
+naraz.
+Na vyriešenie úlohy vám však vždy bude stačiť mať otvorený nanajvýš jeden.
+O obsah štruktúry `pcap_context` sa nemusíte zaujímať, akurát ju na konci
+programu musíte správne uvoľniť pomocou volania funkcie `destroy_context`,
+ktorá sa postará o zavrenie súboru, ku ktorému daná štruktúra patrí.
+
+```c
+void destroy_context(struct pcap_context *context);
+```
+
+Súbor pcap začína hlavičkou, ktorú musíte načítať ako prvú.
+Na to použijete funkciu `load_header`, ktorá hlavičku načíta do pamäte, na ktorú
+jej dáme ukazovateľ.
+
+```c
+int load_header(struct pcap_context *context, struct pcap_header_t *header);
+```
+
+V hlavičke súboru je jedna dôležitá položka – magické číslo (Magic Number).
+Táto 32 bitová konštanta môže nadobúdať jednu z dvoch hodnôt (hexadecimálne):
+
+. `0xA1B2C3D4` – znamená, že časové známky v hlavičkách paketov sú uložené v sekundách a mikrosekundách.
+. `0xA1B23C4D` – znamená, že časové známky v hlavičkách paketov sú uložené v sekundách a nanosekundách.
+
+Následne môžete začať čítať pakety pomocou funkcie `load_packet`, ktorá
+zo súboru prečíta práve jeden paket a uloží ho na určené miesto v pamäti.
+Na vytvorenie kópií paketov používajte nami dodanú funkciu `copy_packet`.
+Každý paket, ktorý vznikol volaním ľubovoľnej z týchto funkcií, musíte pred
+uvoľnením dať funkcii `destroy_packet`, ktorá uvoľní dodatočnú pamäť
+alokovanú samotnou knižnicou.
+
+```c
+int load_packet(struct pcap_context *context, struct packet_t *packet);
+int copy_packet(struct packet_t *src, struct packet_t *dest);
+void destroy_packet(struct packet_t *packet);
+```
+
+Funkcie s návratovým typom `int` vracajú v prípade úspechu `0`, v prípade
+zlyhania vrátia nenulový návratový kód.
+
+Môže sa vám tiež hodiť pomocná funkcia z knižnice, pomocou ktorej môžete vypísať
+informácie o danom pakete.
+
+Môžete si všimnúť, že dodaná zjednodušená knižnica ignoruje a preskakuje
+v načítavaných súboroch všetky pakety, ktoré nemajú protokol IPv4.
+V tejto úlohe sa budeme zaoberať iba IPv4 paketmi.
+
+=== Demo
+
+V kostre úlohy nájdete súbor `demo.c` a v ňom funkciu `main`.
+V tomto súbore sa môžete hrať s vašim doterajším riešením a testovať ho.
+Obsahuje tiež funkciu `demo1`, ktorá s použitím dodanej knižnice načíta hlavičku
+súboru pcap, potom načíta prvé 2 pakety a vypíše informácie o nich.
+Ak sa zamyslíte nad obsahom tejto funkcie, implementáciu prvej časti úlohy by
+ste mali zvládnuť bez väčších problémov.
+
+V kostre nájdete aj jednoduchý súbor pcap (`test.pcap`), ktorý obsahuje 10
+paketov.
+Nad ním sú postavené testy nanečisto.
+Na prehliadanie, vytváranie a editáciu vlastných súborov pcap môžete použiť
+program Wireshark – internety sú plné návodov na prácu s ním.
+
+== Zadanie
+
+=== 1. Načítanie celého záznamu
+
+V prvej časti budete implementovať načítanie kompletného obsahu súboru pcap
+pomocou dodanej knižnice.
+V súbore `capture.h` sú deklarácie niekoľkých funkcií, ktorých implementácie
+budete písať do súboru `capture.c`.
+Počet a hlavičky funkcií v `capture.h` nesmiete nijak meniť.
+V súbore sa nachádza štruktúra `capture_t`, ktorú máte za úlohu navrhnúť vy sami.
+Funkcia `load_capture` načíta hlavičku a potom všetky pakety zo zadaného súboru.
+Spôsob, akým si budete ukladať dopredu neznámy počet paketov v štruktúre
+`capture_t` je vo vašej réžii.
+Dôležité je, aby bola po zavolaní `destroy_capture` korektne uvoľnená všetka
+pamäť alokovaná v priebehu načítavania.
+
+V prípade použitia spájaného zoznamu môžte potrebné štruktúry pridať do súboru
+`capture.h`.
+
+```c
+struct capture_t {
+    /* Sem vložte implementáciu štruktúry */
+}
+
+int load_capture(struct capture_t *capture, const char *filename);
+void destroy_capture(struct capture_t *capture);
+```
+
+TIP: Zamyslite sa nad tým, či `pcap_context` musí nutne byť súčasťou `capture_t`.
+K volaniu funkcie `destroy_context` by malo dôjsť ešte vo funkcii `load_capture`.
+
+Ak volanie funkcie `load_packet` zlyhá v priebehu načítavania, funkcia
+`load_capture` korektne uvoľní všetku doteraz alokovanú pamäť a vráti `-1`.
+Inak povedané, aj keď sa podarí zo súboru s 50 paketmi korektne načítať 49
+paketov a posledné volanie `load_packet` zlyhá, `load_capture` musí tento stav
+zvládnuť a pred ukončením sa postarať o uvoľnenie všetkých doteraz načítaných
+paketov.
+
+Pakety ukladajte v poradí, v ktorom sú uložené v pcap súbore – teda v rovnakom,
+v akom vám ich bude vracať postupné volanie funkcie `load_packet`.
+Funkcie `get_header` a `get_packet` iba vracajú ukazateľ na hlavičku pcap alebo
+paket uložený vnútri štruktúry `capture_t`, žiadne dáta ani nekopírujú,
+ani nevytvárajú.
+Funkcia `packet_count` vracia počet paketov vnútri štruktúry `capture_t`.
+Funkcia `data_transfered` potom vracia súčet veľkostí všetkých paketov v zázname
+(pričom vás zaujíma hodnota `orig_len` v `packet_header_t`).
+
+```c
+struct pcap_header_t* get_header(const struct capture_t *const capture);
+struct packet_t* get_packet(const struct capture_t *const capture, size_t index);
+
+size_t packet_count(const struct capture_t *const capture);
+size_t data_transfered(const struct capture_t *const capture);
+```
+
+=== 2. Filtrovanie
+
+V druhej časti úlohy budete implementovať funkcie na filtrovanie paketov
+na základe ich vlastností.
+
+Naimplementujte všetky funkcie deklarované v hlavičke `capture.h` v tvare:
+
+```c
+int filter_<niečo>(const struct capture_t *const original, struct capture_t *filtered, <ďalšie parametre pre filtrovanie>);
+```
+
+Tieto funkcie sa budú správať veľmi podobne: každá vytvorí kópiu pôvodnej
+štruktúry `original` a naplní novú štruktúru `filtered` tými paketmi
+zo štruktúry `original`, ktoré vyhovujú danému kritériu.
+Štruktúra `original` musí zostať nezmenená, filtrovacia funkcia všetky
+vyhovujúce pakety *skopíruje* do novej štruktúry `filtered`.
+Neskoršie zmazanie ľubovoľnej z týchto 2 štruktúr nesmie nijak ovplyvniť tú druhú.
+Podobne, pokiaľ neskôr dôjde k zmene obsahu paketu v jednej zo štruktúr, nijak
+sa tým nezmení paket v tej druhej.
+
+IMPORTANT: Nezabudnite, že novo vzniknutá štruktúra `filtered` musí byť
+plnohodnotnou kópiou pôvodnej štruktúry (okrem nevyhovujúcich paketov), takže
+to stále musí byť validná štruktúra `capture_t`.
+Musí byť použiteľná vo všetkých funkciách z tejto domácej úlohy, napríklad
+v ďalších filtrovacích funkciách (a tiež na nej musí korektne fungovať volanie
+funkcie `get_header`😉). Tiež sa predpokladá, že bude neskôr uprataná pomocou
+funkcie `destroy_capture`, rovnako ako štruktúry, ktoré vznikli volaním
+`load_capture`.
+
+Pokiaľ dôjde v priebehu filtrovania ku problému v niektorej z funkcií knižnice
+`pcap.h`, filtrovacia funkcia vráti `-1` a pre štruktúru `filtered` platí to
+isté, čo pre štruktúru vo funkcii `load_capture` – nesmie po nej zostať žiadna
+neuvoľnená pamäť.
+Štruktúra `original` však zostane nezmenená aj v prípade zlyhania.
+
+==== Ako na masky?
+
+Masku definujeme ako počet prvých _n_ bitov počiatočnej IP adresy v tvare `IP/n`.
+Adresy vyhovujúce zadanej maske sú tie, ktoré sa zhodujú s počiatočnou adresou
+v prvých _n_ bitoch.
+Ako príklad môžeme použiť adresu/masku `127.0.0.1/8`:
+
+```
+127.0.0.1 = 01111111 00000000 00000000 00000001
+Mask   /8 = 11111111 00000000 00000000 00000000
+IP & Mask = 01111111 00000000 00000000 00000000
+```
+
+Tejto maske budú teda vyhovovať všetky adresy, ktoré po aplikácii bitovej
+operácie `&` s maskou `/8` dajú rovnaký výsledok ako počiatočná adresa.
+Teda adresy, ktoré majú v prvých 8 bitoch `01111111`, napríklad `127.0.1.1`.
+
+Ak nerozumiete formátu dát, ktoré funkcie na filtrovanie pomocou masiek
+používajú, nahliadnite do priložených testov.
+
+=== 3. Štatistiky a analýza tokov
+
+Teraz sa dostávame k jadru domácej úlohy – k analýze dátových tokov.
+Pre potreby tejto úlohy budeme zjednodšene predpokladať, že dátový tok sú všetky
+pakety s unikátnou dvojicou zdrojovej a cieľovej IP adresy.
+V nasledujúcom príklade každý riadok zodpovedá jednému paketu, kde sa na ľavej
+strane nachádza jeho zdrojová adresa a na pravej jeho cieľová adresa.
+
+```
+N. ip_from  -> ip_to
+-----------------------
+1. 11.0.0.0 -> 22.0.0.0
+2. 22.0.0.0 -> 11.0.0.0
+3. 33.0.0.0 -> 44.0.0.0
+4. 11.0.0.0 -> 22.0.0.0
+5. 11.0.0.0 -> 44.0.0.0
+6. 33.0.0.0 -> 44.0.0.0
+7. 33.0.0.0 -> 11.0.0.0
+8. 11.0.0.0 -> 22.0.0.0
+9. 11.0.0.0 -> 22.0.0.0
+```
+
+Pakety 1, 4, 8 a 9 tvoria jeden tok.
+Paket 2 tvorí samostatný tok (teda komunikácia v rámci jedného toku je vždy iba
+jednosmerná).
+Pakety 3 a 6 patria k ďalšiemu toku.
+Pakety 5 a 7 patria k tokom, ktoré sú tvorené iba jedným paketom.
+
+Vašou úlohou bude naimplementovať dve funkcie.
+
+```c
+int print_flow_stats(const struct capture_t *const capture);
+int print_longest_flow(const struct capture_t *const capture);
+```
+
+Funkcia `print_flow_stats` vypíše informácie o všetkých tokoch.
+Pre každý tok vypíše presne jeden riadok v tvare
+
+```
+<ip_from> -> <ip_to> : <packet_count>
+```
+
+kde `<ip_from>` je zdrojová IP adresa, `<ip_to>` je cieľová adresa
+a `<packet_count>` je počet paketov, ktoré sa v tomto toku nachádzajú.
+Riadky budú vypísané v poradí, v akom sa v zázname vyskytujú prvé pakety
+patriace jednotlivým tokom.
+Uvedenému príkladu by teda zodpovedal výsledok:
+
+```
+11.0.0.0 -> 22.0.0.0 : 4
+22.0.0.0 -> 11.0.0.0 : 1
+33.0.0.0 -> 44.0.0.0 : 2
+11.0.0.0 -> 44.0.0.0 : 1
+33.0.0.0 -> 11.0.0.0 : 1
+```
+
+Funkcia `print_longest_flow` vypíše presne jeden riadok v tvare
+
+```
+<ip_from> -> <ip_to> : <start_seconds>:<start_microseconds/nanoseconds> - <end_seconds>:<end_microseconds/nanoseconds>
+```
+
+a to pre najdlhší tok, ktorý sa v zázname nachádza.
+Za začiatok toku sa považuje časová známka jeho prvého paketu a za koniec časová
+známka jeho posledného paketu.
+Pokiaľ sa v zázname nachádza viac tokov s rovnakou dĺžkou v sekundách, je
+rozhodujúca dĺžka toku v rozlíšení mikrosekúnd alebo nanosekúnd.
+Ak bude aj takýchto tokov viac, funkcia vypíše ten, ktorý sa v zázname objavil
+ako prvý.
+
+Môžete predpokladať, že pakety sú v zázname v správnom poradí, teda pre
+ľubovoľnú dvojicu paketov _P1_ a _P2_, kde _P2_ bol funkciou `load_packet`
+načítaný neskôr než _P1_, platí, že časová známka _T_ paketu _P2.T_ >= _P1.T_.
+
+Obe funkcie v prípade zlyhania uvoľnia všetku vlastnú doposiaľ naalokovanú pamäť
+(postarajú sa iba o alokácie, ku ktorým došlo v rámci aktuálneho volania
+funkcie).
+Pri zlyhaní skončia s nenulovou návratovou hodnotou a na štandardný chybový
+výstup vypíšu práve jeden riadok s ľubovoľnou *zmysluplnou* chybovou hláškou.
+V tomto prípade nebudeme testovať, či došlo k nejakému výpisu na `stdout`.
+
+Prázdny záznam s počtom paketov rovný nule považujte pri funkcii
+`print_longest_flow` za nekorektný vstup a zareagujte naň ako na zlyhanie
+funkcie.
+
+=== 4. CLI program
+
+Na záver naimplementujete jednoduchý program, ktorý pomocou knižnice `capture.h`
+vykoná analýzu súboru pcap a vypíše zvolenú štatistiku.
+Volanie programu vyzerá nasledovne:
+
+```
+./nft <input_file> <from+mask> <to+mask> <statistic>
+```
+
+argumenty:
+
+* `<input_file>` cesta k pcap súboru
+* `<from+mask>` adresa a maska zdrojovej podsiete zapísaná v tvare a.b.c.d/bits
+* `<to+mask>` adresa a maska cieľovej podsiete zapísaná v tvare a.b.c.d/bits
+* `<statistic>` bude `flowstats` alebo `longestflow`
+
+Program načíta záznam zo súboru `<input_file>`, vyfiltruje jeho obsah na základe
+`<from+mask>` a `<to+mask>` a následne nad výsledným záznamom zavolá funkciu
+`print_flow_stats` alebo `print_longest_flow` podľa toho, čo obsahuje argument
+`<statistic>`.
+
+Napríklad volanie s dodaným súborom
+
+```
+./nft test.pcap 0.0.0.0/0 0.0.0.0/0 flowstats
+```
+
+pri správnej implementacii vypíše:
+
+```
+172.16.11.12 -> 74.125.19.17 : 3
+74.125.19.17 -> 172.16.11.12 : 2
+216.34.181.45 -> 172.16.11.12 : 3
+172.16.11.12 -> 216.34.181.45 : 2
+```
+
+Môžete očakávať, že argumenty pre IP adresu budú v správnom tvare.
+Inak povedané, na načítanie celej jednej masky z argumentu bude stačiť jedno
+volanie `sscanf` s formátovacím reťazcom, ktorý obsahuje značku `%` práve 5-krát
+😉.
+Nie je ale na škodu aj tak ošetriť nesprávne vstupy – pozrite sa do
+dokumentácie, čo funkcia `sscanf` vracia.
+
+V prípade nesprávneho počtu argumentov program vráti nenulový návratový kód
+a vypíše na štandardný chybový výstup jeden riadok s ľubovoľnou *zmysluplnou*
+chybovou hláškou.
+Podobne v prípade nesprávnych argumentov (napríklad bits > 32, nesprávny názov
+štatistiky).
+Čísla v zadanej IP adrese mimo rozsahu 0-255 pre zjednodušenie testovať nebudeme.
+Funkcie pre štatistiky v prípade zlyhania už na štandardný chybový výstup niečo
+vypisujú – v tomto prípade samotný program na `stderr` nepridá nič ďalšie, ale
+stále skončí s nenulovým návratovým kódom.
+
+IMPORTANT: V programe sa nespoliehajte na vami definovaný obsah štruktúry
+`capture_t`!
+So záznamami narábajte iba pomocou funkcií deklarovaných v `capture.h`.
+Váš program bude pri testovaní kompilovaný aj s nami dodanými
+`capture.h`/`capture.c`, ktoré si štruktúru nadefinujú inak ako vy!
+
+== Požiadavky
+
+Nesmiete sa spoliehať na vlastné úpravy súborov `pcap.h` a `pcap.c`.
+Pri testovaní budú použité pôvodné súbory a vaše zmeny v nich teda budú ignorované.
+
+V súbore `capture.h` nesmiete upraviť existujúce deklarácie funkcií.
+Nepridávajte do súboru žiadne pomocné funkcie, tie patria len do súboru `capture.c`.
+Môžete do súboru pridať `include`, pokiaľ to vyžaduje nejaký typ, ktorý chcete
+v štruktúre použiť.
+Vzorová implementácia sa zaobíde aj bez toho.
+
+Váš program z časti 4 sa musí pri práci so záznamami spoliehať len a len na
+funkcie definované v súbore `capture.h`.
+Pokiaľ si v `capture.c` definujete pomocné funkcie, v programe ich nebude možné
+použiť.
+V tejto časti sa taktiež nespoliehajte na vami definovaný obsah štruktúry `capture_t`.
+K obsahu tejto štruktúry by mali pristupovať iba funkcie definované v súbore `capture.h`.
+Pri testovaní vášho programu v súbore `nft.c` môžu a budú súbory `capture.h`
+a `capture.c` nahradené vzorovým riešením.
+
+Program musí pred ukončením správne uvoľniť všetku naalokovanú pamäť.
+
+== Poznámky
+
+=== Tipy a triky
+
+* Na vyrešenie úlohy súbor `nft.c` vôbec nemusí obsahovať `#include "pcap.h"`
+  (a ani by nemal).
+
+* Využívajte dodaný súbor `demo.c` a testy čo najviac.
+  Nepúšťajte sa do programovania ďalšej časti úlohy, pokiaľ si poriadne
+  neotestujete použitie predchádzajúcej časti.
+  Chyby v načítavaní a funkciách `get_header` a `get_packet` negatívne ovplyvnia
+  správanie aj testy filtrovacích funkcií a štatistík.
+
+* Dokumentáciu k funkciám, ktoré sa nachádzajú v hlavičkových súboroch,
+  považujte za súčasť zadania.
+
+* Správne ošetrujte chybové stavy nielen v dodaných funkciách, ale aj pri
+  volaniach štandardných funkcií jazyka C.
+  Program musí uvoľniť pamäť aj pri zlyhaní týchto funkcií.
+
+* Pozor na umiestnenie súboru `test.pcap` vzhľadom ku skompilovaným binárkam.
+  Testy aj demo ho očakávajú v rovnakom adresári, takže ak kompilujete programy
+  do build adresárov, nezabudnite do nich súbor test.pcap skopírovať.
+
+== Vzorová implementácia
+
+Vzorovú implementáciu nájdete v `/home/kontr/pb071/hw03/nft`.
+Na nej si môžete vyskúšať očakávané správanie CLI programu.
+
+V rovnakom adresári nájdete aj program filterer, pomocou kterého môžete
+otestovať správne chovanie filtrovacích funkcií.
+Pre viac informácií si na Aise spustite `/home/kontr/pb071/hw03/filterer --help`.
+
+== Testy
+
+V kostre nájdete priložené ukážkové testy.
+Tie sú zámerne veľmi povrchné, z obsahu načítaného paketu napríklad kontrolujú
+len jeho dĺžku.
+Ich obsah vám však veľmi dobre poslúži ako návod, ako si podľa nich napísať
+vlastné a komplexnejšie testy.
+
+V súbore `tests/tests-unit.c` nájdete ukážky unit testov na testovanie
+jednotlivých funkcií.
+Súbor `tests/tests-e2e.c` potom obsahuje ukážky testov, ktoré otestujú váš
+kompletný program.
+
+=== Testy nanečisto
+
+Z dodaných testov vám nanečisto musia prejsť iba `load_capture_basic`
+a `filter_from_to_basic`.
+Ostatné testy berte ako pozornosť podniku.
+Pokiaľ vám však neprechádzajú, veľmi nepočítajte s veľkým počtom bodov z ostrých
+testov.
+
+Okrem toho sa bude v testoch nanečisto kontrolovať, či ste neupravili v súbore
+`capture.h` nič okrem zadanej štruktúry a takiež, či sa váš `nft.c` skompiluje
+s našimi `capture.h`/`capture.c` a naopak, či sa náš `nft.c` skompiluje s vašimi
+`capture.h`/`capture.c`.
